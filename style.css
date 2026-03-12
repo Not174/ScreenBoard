@@ -173,15 +173,16 @@
         /* Canvas Area */
         #canvas-container {
             position: absolute;
-            top: 80px;
-            bottom: 20px;
-            left: 85px;
-            right: 85px;
+            top: 2px;
+            bottom: 2px;
+            left: 2px;
+            right: 2px;
             background-color: var(--canvas-bg);
             border: 2px solid var(--border-color);
             border-radius: 8px;
             overflow: hidden;
             box-shadow: var(--shadow);
+            z-index: 1;
         }
 
         #main-canvas {
