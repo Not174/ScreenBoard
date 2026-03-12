@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Professional Whiteboard - Advanced Pages</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="dark-mode">
+
+    <div id="toolbar">
+        <div class="tool-group">
+            <button id="theme-btn" class="btn" title="Switch Theme">⚪</button>
+        </div>
+        <div class="tool-group">
+            <button id="add-page" class="btn" title="Insert Page After Current (Shift+N)">➕</button>
+            <button id="del-page" class="btn danger" title="Delete Current Page">🗑️</button>
+        </div>
+        <div class="tool-group">
+            <button id="pen-tool" class="btn active" title="Pen (D)">✏️</button>
+            <button id="eraser-tool" class="btn" title="Eraser (E)">🧼</button>
+            <button id="select-tool" class="btn" title="Select Item">✂️</button>
+        </div>
+        <div class="tool-group">
+            <input type="color" id="color-picker" value="#ffffff">
+            <input type="range" id="size-slider" min="1" max="100" value="3">
+            <input type="number" id="size-input" value="3">
+        </div>
+        <div class="tool-group">
+            <button id="upload-btn" class="btn" title="Upload Image">🖼️</button>
+            <button id="pdf-btn" class="btn" title="Save all pages as PDF">💾</button>
+            <button id="undo-btn" class="btn" title="Undo (Ctrl+Z)">↩️</button>
+            <button id="redo-btn" class="btn" title="Redo (Ctrl+Y)">↪️</button>
+            <button id="clear-btn" class="btn danger" title="Clear Page">🧹</button>
+        </div>
+    </div>
+
+    <div id="left-nav" class="side-nav">
+        <div id="prev-page" class="nav-circle" title="Previous Page (P)">◀</div>
+        <div class="page-label">PG <span class="cur-pg-display">1</span></div>
+    </div>
+
+    <div id="right-nav" class="side-nav">
+        <div id="next-page" class="nav-circle" title="Next Page (N)">▶</div>
+        <div class="page-label">PG <span class="cur-pg-display">1</span></div>
+    </div>
+
+    <div id="canvas-container" class="tool-pen">
+        <canvas id="main-canvas"></canvas>
+        <div id="selection-marquee"></div>
+    </div>
+
+    <input type="file" id="file-input" style="display:none" accept="image/*">
+    <div id="toast"></div>
+
+    <script>
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const container = document.getElementById('canvas-container');
+        const toast = document.getElementById('toast');
+        const colorPicker = document.getElementById('color-picker');
+        const sizeSlider = document.getElementById('size-slider');
+        const sizeInput = document.getElementById('size-input');
+
+        let drawing = false, selecting = false;
+        let currentTool = 'pen';
+        let history = [], redoStack = [], lastX = 0, lastY = 0;
+        let selStartX = 0, selStartY = 0;
+        let isDarkMode = true;
+        let localClipboard = null;
+
+        let currentPenSize = 3;
+        let currentEraserSize = 30;
+        let currentSize = 3;
+
+        let pages = [{ canvasData: null, items: [] }];
+        let currentPageIndex = 0;
+
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', debounce(resizeCanvas, 250));
+
+            document.getElementById('pen-tool').onclick = () => { flattenSelection(); setTool('pen'); };
+            document.getElementById('eraser-tool').onclick = () => { flattenSelection(); setTool('eraser'); };
+            document.getElementById('select-tool').onclick = () => setTool('select');
+
+            document.getElementById('prev-page').onclick = prevPage;
+            document.getElementById('next-page').onclick = nextPage;
+            document.getElementById('add-page').onclick = addPage;
+            document.getElementById('del-page').onclick = deletePage;
+
+            document.getElementById('theme-btn').onclick = toggleTheme;
+            document.getElementById('clear-btn').onclick = clearPage;
+            document.getElementById('undo-btn').onclick = undo;
+            document.getElementById('redo-btn').onclick = redo;
+            document.getElementById('upload-btn').onclick = () => document.getElementById('file-input').click();
+            document.getElementById('file-input').onchange = handleUpload;
+            document.getElementById('pdf-btn').onclick = saveAsPDF;
+
+            canvas.addEventListener('mousedown', startAction);
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', stopAction);
+
+            window.addEventListener('mousedown', (e) => {
+                if (!e.target.closest('.image-container') && !e.target.closest('#toolbar')) deselectAllImages();
+            });
+
+            window.addEventListener('keydown', (e) => {
+                const isCtrl = e.ctrlKey || e.metaKey;
+                const selected = document.querySelector('.image-container.selected');
+                if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
+                    selected.remove(); saveState(); showToast('Deleted');
+                }
+                if (isCtrl && e.key === 'c' && selected) {
+                    localClipboard = { src: selected.querySelector('img').src, width: parseInt(selected.style.width) };
+                    showToast('Copied');
+                }
+                if (isCtrl && e.key === 'v' && localClipboard) {
+                    createImage(localClipboard.src, lastX + 10 + 'px', lastY + 10 + 'px', localClipboard.width + 'px');
+                    saveState(); showToast('Pasted');
+                }
+                if (e.key === 'Escape') flattenSelection();
+                if (isCtrl && e.key === 'z') { e.preventDefault(); undo(); }
+                if (isCtrl && e.key === 'y') { e.preventDefault(); redo(); }
+                if (e.shiftKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); addPage(); }
+                else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); nextPage(); }
+
+                if (e.key === 'p' || e.key === 'P') { e.preventDefault(); prevPage(); }
+                // Tool shortcuts (always active)
+                if (!isCtrl && !e.altKey) {
+                    if (e.key === 'd' || e.key === 'D') { flattenSelection(); setTool('pen'); showToast('Pen'); }
+                    if (e.key === 'e' || e.key === 'E') { flattenSelection(); setTool('eraser'); showToast('Eraser'); }
+                }
+            });
+
+            sizeSlider.oninput = (e) => updateSize(e.target.value);
+            sizeInput.oninput = (e) => updateSize(e.target.value);
+
+            updateSize(currentPenSize);
+
+            updatePageUI();
+            saveState();
+        }
+
+        function updatePageUI() {
+            const displays = document.querySelectorAll('.cur-pg-display');
+            displays.forEach(d => d.innerText = currentPageIndex + 1);
+            const prevBtn = document.getElementById('prev-page');
+            const nextBtn = document.getElementById('next-page');
+            prevBtn.classList.toggle('disabled', currentPageIndex === 0);
+            nextBtn.classList.toggle('disabled', currentPageIndex === pages.length - 1);
+        }
+
+        function saveCurrentPageToMemory() {
+            pages[currentPageIndex] = {
+                canvasData: canvas.toDataURL(),
+                items: Array.from(document.querySelectorAll('.image-container')).map(el => ({
+                    src: el.querySelector('img').src,
+                    top: el.style.top,
+                    left: el.style.left,
+                    width: el.style.width
+                }))
+            };
+        }
+
+        function loadPageFromMemory(index) {
+            currentPageIndex = index;
+            const state = pages[index];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.querySelectorAll('.image-container').forEach(e => e.remove());
+
+            if (state && state.canvasData) {
+                const img = new Image();
+                img.onload = () => {
+                    const dpr = window.devicePixelRatio || 1;
+                    ctx.drawImage(img, 0, 0, canvas.width / dpr, canvas.height / dpr);
+                };
+                img.src = state.canvasData;
+                if (state.items) state.items.forEach(i => createImage(i.src, i.left, i.top, i.width));
+            }
+            history = []; redoStack = [];
+            updatePageUI();
+            saveState();
+        }
+
+        function addPage() {
+            saveCurrentPageToMemory();
+            pages.splice(currentPageIndex + 1, 0, { canvasData: null, items: [] });
+            loadPageFromMemory(currentPageIndex + 1);
+            showToast(`Page inserted at ${currentPageIndex + 1}`);
+        }
+
+        function deletePage() {
+            if (pages.length <= 1) {
+                clearPage();
+                return;
+            }
+            if (confirm(`Delete Page ${currentPageIndex + 1}?`)) {
+                pages.splice(currentPageIndex, 1);
+                const targetIdx = Math.max(0, currentPageIndex - 1);
+                loadPageFromMemory(targetIdx);
+                showToast("Page deleted");
+            }
+        }
+
+        function nextPage() {
+            if (currentPageIndex < pages.length - 1) {
+                saveCurrentPageToMemory();
+                loadPageFromMemory(currentPageIndex + 1);
+            } else {
+                showToast("No page exists after this");
+            }
+        }
+
+        function prevPage() {
+            if (currentPageIndex > 0) {
+                saveCurrentPageToMemory();
+                loadPageFromMemory(currentPageIndex - 1);
+            } else {
+                showToast("No page exists before this");
+            }
+        }
+
+        function startAction(e) {
+            const pos = getPos(e);
+            lastX = pos.x; lastY = pos.y;
+            if (currentTool === 'select') {
+                selecting = true; selStartX = pos.x; selStartY = pos.y;
+                const marquee = document.getElementById('selection-marquee');
+                marquee.style.display = 'block';
+                updateMarquee(pos.x, pos.y);
+            } else {
+                drawing = true;
+                if (redoStack.length > 0) redoStack = [];
+                handleMove(e);
+            }
+        }
+
+        function handleMove(e) {
+            const pos = getPos(e);
+            if (selecting) {
+                updateMarquee(pos.x, pos.y);
+            } else if (drawing) {
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.strokeStyle = currentTool === 'eraser' ? (isDarkMode ? '#000' : '#fff') : colorPicker.value;
+                ctx.lineWidth = currentSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+                lastX = pos.x; lastY = pos.y;
+            }
+        }
+
+        function stopAction() {
+            const marquee = document.getElementById('selection-marquee');
+            if (selecting) {
+                const rect = marquee.getBoundingClientRect();
+                const crect = container.getBoundingClientRect();
+                const w = rect.width, h = rect.height;
+                if (w > 5 && h > 5) captureSelection(rect.left - crect.left, rect.top - crect.top, w, h);
+                marquee.style.display = 'none'; selecting = false;
+            }
+            if (drawing) { drawing = false; saveState(); }
+        }
+
+        function captureSelection(x, y, w, h) {
+            const dpr = window.devicePixelRatio || 1;
+            const temp = document.createElement('canvas');
+            temp.width = w * dpr; temp.height = h * dpr;
+            temp.getContext('2d').drawImage(canvas, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, w * dpr, h * dpr);
+            ctx.clearRect(x, y, w, h);
+            createImage(temp.toDataURL(), x + 'px', y + 'px', w + 'px');
+            saveState();
+        }
+
+        function updateMarquee(x, y) {
+            const marquee = document.getElementById('selection-marquee');
+            marquee.style.left = Math.min(selStartX, x) + 'px';
+            marquee.style.top = Math.min(selStartY, y) + 'px';
+            marquee.style.width = Math.abs(selStartX - x) + 'px';
+            marquee.style.height = Math.abs(selStartY - y) + 'px';
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function updateSize(val) {
+            val = parseInt(val) || 1;
+            currentSize = val;
+            sizeSlider.value = val;
+            sizeInput.value = val;
+            if (currentTool === 'pen') currentPenSize = val;
+            else if (currentTool === 'eraser') currentEraserSize = val;
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('#toolbar .btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`${tool}-tool`).classList.add('active');
+            container.className = `tool-${tool}`;
+            if (tool === 'pen') updateSize(currentPenSize);
+            else if (tool === 'eraser') updateSize(currentEraserSize);
+        }
+
+        function saveState() {
+            const snap = {
+                canvas: canvas.toDataURL(),
+                items: Array.from(document.querySelectorAll('.image-container')).map(el => ({
+                    src: el.querySelector('img').src,
+                    top: el.style.top, left: el.style.left, width: el.style.width
+                }))
+            };
+            history.push(JSON.stringify(snap));
+            if (history.length > 30) history.shift();
+            redoStack = [];
+        }
+
+        function undo() {
+            if (history.length > 1) {
+                redoStack.push(history.pop());
+                applyState(history[history.length - 1]);
+            }
+        }
+
+        function redo() {
+            if (redoStack.length > 0) {
+                const s = redoStack.pop();
+                history.push(s);
+                applyState(s);
+            }
+        }
+
+        function applyState(s) {
+            const state = JSON.parse(s);
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const dpr = window.devicePixelRatio || 1;
+                ctx.drawImage(img, 0, 0, canvas.width / dpr, canvas.height / dpr);
+            };
+            img.src = state.canvas;
+            document.querySelectorAll('.image-container').forEach(e => e.remove());
+            state.items.forEach(i => createImage(i.src, i.left, i.top, i.width));
+        }
+
+        function clearPage() {
+            if (confirm("Clear drawings on this page?")) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                document.querySelectorAll('.image-container').forEach(e => e.remove());
+                saveState();
+            }
+        }
+
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('light-mode');
+            document.getElementById('theme-btn').textContent = isDarkMode ? '⚪' : '⚫';
+            const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < data.data.length; i += 4) {
+                if (data.data[i + 3] > 0) {
+                    data.data[i] = 255 - data.data[i];
+                    data.data[i + 1] = 255 - data.data[i + 1];
+                    data.data[i + 2] = 255 - data.data[i + 2];
+                }
+            }
+            ctx.putImageData(data, 0, 0);
+            saveState();
+        }
+
+        function handleUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => createImage(ev.target.result, '50px', '50px', '200px');
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function flattenSelection() {
+            document.querySelectorAll('.image-container').forEach(wrapper => {
+                const img = wrapper.querySelector('img');
+                const rect = wrapper.getBoundingClientRect();
+                const crect = canvas.getBoundingClientRect();
+                ctx.drawImage(img, rect.left - crect.left, rect.top - crect.top, rect.width, rect.height);
+                wrapper.remove();
+            });
+            saveState();
+        }
+
+        function createImage(src, left, top, width) {
+            const wrap = document.createElement('div');
+            wrap.className = 'image-container';
+            wrap.style.left = left; wrap.style.top = top; wrap.style.width = width;
+
+            const img = document.createElement('img'); img.src = src;
+            const menu = document.createElement('div'); menu.className = 'selection-menu';
+            menu.innerHTML = `<button class="menu-btn">📋 Copy</button><button class="menu-btn danger">🗑️ Delete</button><button class="menu-btn">✅ Done</button>`;
+            const resizer = document.createElement('div'); resizer.className = 'resizer';
+
+            wrap.append(img, menu, resizer);
+            container.appendChild(wrap);
+
+            const btns = menu.querySelectorAll('button');
+            btns[0].onclick = (e) => { e.stopPropagation(); createImage(src, (parseInt(wrap.style.left) + 20) + 'px', (parseInt(wrap.style.top) + 20) + 'px', wrap.style.width); saveState(); };
+            btns[1].onclick = (e) => { e.stopPropagation(); wrap.remove(); saveState(); };
+            btns[2].onclick = (e) => { e.stopPropagation(); flattenSelection(); };
+
+            makeDraggable(wrap);
+            makeResizable(wrap, resizer);
+            selectImage(wrap);
+        }
+
+        function makeDraggable(el) {
+            el.onmousedown = (e) => {
+                if (e.target.closest('.selection-menu') || e.target.className === 'resizer') return;
+                e.preventDefault();
+                selectImage(el);
+                let startX = e.clientX, startY = e.clientY;
+                document.onmousemove = (me) => {
+                    el.style.left = (el.offsetLeft + (me.clientX - startX)) + 'px';
+                    el.style.top = (el.offsetTop + (me.clientY - startY)) + 'px';
+                    startX = me.clientX; startY = me.clientY;
+                };
+                document.onmouseup = () => { document.onmousemove = null; saveState(); };
+            };
+        }
+
+        function makeResizable(el, handle) {
+            handle.onmousedown = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                let startW = el.offsetWidth, startX = e.clientX;
+                const onMove = (me) => el.style.width = Math.max(20, startW + (me.clientX - startX)) + 'px';
+                const onUp = () => { window.removeEventListener('mousemove', onMove); saveState(); };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp, { once: true });
+            };
+        }
+
+        function selectImage(el) { deselectAllImages(); el.classList.add('selected'); }
+        function deselectAllImages() { document.querySelectorAll('.image-container').forEach(i => i.classList.remove('selected')); }
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = container.getBoundingClientRect();
+            if (rect.width === 0) return;
+            const temp = canvas.toDataURL();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.scale(dpr, dpr);
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            img.src = temp;
+        }
+
+        function showToast(msg) {
+            toast.innerText = msg; toast.style.opacity = 1;
+            setTimeout(() => toast.style.opacity = 0, 2000);
+        }
+
+        async function saveAsPDF() {
+            showToast('Preparing PDF...');
+            // Save the current page first
+            saveCurrentPageToMemory();
+
+            // For each page, render canvas + floating images into a single image
+            const pageImages = [];
+            const dpr = window.devicePixelRatio || 1;
+            const W = canvas.width / dpr;
+            const H = canvas.height / dpr;
+
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i];
+                const offscreen = document.createElement('canvas');
+                offscreen.width = canvas.width;
+                offscreen.height = canvas.height;
+                const octx = offscreen.getContext('2d');
+                octx.scale(dpr, dpr);
+
+                // Fill background so white-on-black drawings are visible in PDF
+                octx.fillStyle = isDarkMode ? '#000000' : '#ffffff';
+                octx.fillRect(0, 0, W, H);
+
+                // Draw canvas content
+                if (page.canvasData) {
+                    await new Promise(res => {
+                        const img = new Image();
+                        img.onload = () => { octx.drawImage(img, 0, 0, W, H); res(); };
+                        img.src = page.canvasData;
+                    });
+                }
+
+                // Draw floating image items
+                if (page.items) {
+                    for (const item of page.items) {
+                        await new Promise(res => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const l = parseFloat(item.left);
+                                const t = parseFloat(item.top);
+                                const w = parseFloat(item.width);
+                                const ratio = img.naturalHeight / img.naturalWidth;
+                                octx.drawImage(img, l, t, w, w * ratio);
+                                res();
+                            };
+                            img.onerror = res;
+                            img.src = item.src;
+                        });
+                    }
+                }
+
+                pageImages.push(offscreen.toDataURL('image/png'));
+            }
+
+            // Build a print window with one image per page
+            const printWin = window.open('', '_blank');
+            const imgsHtml = pageImages.map((src, idx) =>
+                `<div class="page"><img src="${src}" alt="Page ${idx + 1}"></div>`
+            ).join('');
+
+            printWin.document.write(`<!DOCTYPE html>
+<html><head><title>Whiteboard PDF</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#fff; }
+  .page { page-break-after: always; width:100%; }
+  .page:last-child { page-break-after: auto; }
+  .page img { width:100%; display:block; }
+</style></head><body>${imgsHtml}</body></html>`);
+            printWin.document.close();
+            printWin.onload = () => printWin.print();
+        }
+
+        function debounce(f, w) {
+            let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), w); };
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
