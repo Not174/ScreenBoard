@@ -392,7 +392,11 @@
             currentTool = tool;
             document.querySelectorAll('#toolbar .btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tool}-tool`).classList.add('active');
-            container.className = `tool-${tool}`;
+
+            // Fix: Use classList to avoid overwriting show-grid class
+            container.classList.remove('tool-pen', 'tool-eraser', 'tool-select');
+            container.classList.add(`tool-${tool}`);
+
             if (tool === 'pen') {
                 updateSize(currentPenSize);
             } else if (tool === 'eraser') {
