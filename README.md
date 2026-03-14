@@ -26,8 +26,10 @@ ScreenBoard is a powerful, lightweight, and professional-grade digital whiteboar
 
 ### 📄 Project Management
 - **Multi-Page Support:** Insert, delete, and navigate between multiple pages effortlessly.
-- **Export to PDF:** Save your work as a high-quality PDF in landscape orientation, perfect for sharing.
-- **Auto-Save:** Page states are saved locally as you work.
+- **Export to PPTX:** Save your entire session as a professional, multi-slide PowerPoint presentation (Landscape Wide).
+- **Native PDF Export:** Generate high-quality PDFs using **jsPDF** in the background, ensuring slides fill the page perfectly with zero margins.
+- **Reusable .WB Format:** Save and load your whiteboard sessions with all layers and pages intact.
+- **Native File Picking:** Choose your filename and save location using the standard system "Save As" dialog (via File System Access API).
 
 ## ⌨️ Keyboard Shortcuts
 

@@ -11,7 +11,8 @@ Build a professional, lightweight digital whiteboard application named "ScreenBo
 #### **1. Core Infrastructure & UI**
 - **Theme Engine:** Implement a Dark Mode (default: `#0f172a` bg) and Light Mode (`#f1f5f9` bg) toggle. Use CSS variables for all colors. Ensure the canvas border and floating navs adapt instantly.
 - **Canvas Scaling:** Support High-DPI (Retina) displays by scaling the canvas according to `window.devicePixelRatio`.
-- **Navigation:** Create fixed side-navigation "circles" for Page Navigation and a centered, floating top toolbar using glassmorphism (`backdrop-filter: blur`).
+- **Navigation:** Create fixed side-navigation "circles" for Page Navigation. Use a centered, floating top toolbar for core tools.
+- **Action Buttons:** Place "Open" and "Export" buttons in the **top-right corner**. The Export button should trigger a dropdown menu for format selection.
 
 #### **2. Drawing Tools**
 - **Pen Tool:**
@@ -43,7 +44,11 @@ Build a professional, lightweight digital whiteboard application named "ScreenBo
     - `N` / `P` or Arrows: Navigation.
     - `Shift + N`: Insert new page at the current index (without skipping ahead).
     - `Ctrl + Z/Y`: Undo/Redo per page.
-- **PDF Export:** Use a library (e.g., `jspdf`) to export all pages in Landscape mode. Ensure the grid (if active) and all floating stickers are rendered into the final PDF.
+- **Multi-Format Export:**
+    - **PPTX:** Use `PptxGenJS` to export all pages as slides.
+    - **PDF:** Use **jsPDF** for native, high-quality landscape generation (matching slide aspect ratio) with zero margins.
+    - **WB Format:** Implement JSON-based session saving/loading.
+    - **Native Dialogs:** Use `window.showSaveFilePicker()` for custom naming and location selection.
 
 #### **6. Visual Polish**
 - Use **Inter** or **Roboto** typography.

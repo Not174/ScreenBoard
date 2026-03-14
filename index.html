@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Professional Whiteboard - Advanced Pages</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 
 <body class="dark-mode">
@@ -41,10 +43,38 @@
         </div>
         <div class="tool-group">
             <button id="upload-btn" class="btn" title="Upload Image">🖼️</button>
-            <button id="pdf-btn" class="btn" title="Save all pages as PDF">💾</button>
             <button id="undo-btn" class="btn" title="Undo (Ctrl+Z)">↩️</button>
             <button id="redo-btn" class="btn" title="Redo (Ctrl+Y)">↪️</button>
             <button id="clear-btn" class="btn danger" title="Clear Page">🧹</button>
+        </div>
+    </div>
+
+    <div class="top-right-actions">
+        <button id="open-btn" class="action-btn" title="Open Whiteboard File (.wb)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        </button>
+        <div class="action-group">
+            <button id="export-toggle-btn" class="action-btn" title="Export Options">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+            </button>
+            <div id="export-dropdown" class="dropdown-menu">
+                <div class="dropdown-item" id="export-pptx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>
+                    Save as PPTX
+                </div>
+                <div class="dropdown-item" id="export-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Save as PDF
+                </div>
+                <div class="dropdown-item" id="export-wb">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    Save as .WB
+                </div>
+            </div>
         </div>
     </div>
 
@@ -64,6 +94,7 @@
     </div>
 
     <input type="file" id="file-input" style="display:none" accept="image/*">
+    <input type="file" id="wb-file-input" style="display:none" accept=".wb,application/json">
     <div id="toast"></div>
 
     <script>
@@ -124,7 +155,21 @@
             document.getElementById('redo-btn').onclick = redo;
             document.getElementById('upload-btn').onclick = () => document.getElementById('file-input').click();
             document.getElementById('file-input').onchange = handleUpload;
-            document.getElementById('pdf-btn').onclick = saveAsPDF;
+            
+            document.getElementById('export-toggle-btn').onclick = (e) => {
+                e.stopPropagation();
+                document.getElementById('export-dropdown').classList.toggle('active');
+            };
+            window.addEventListener('click', () => {
+                document.getElementById('export-dropdown').classList.remove('active');
+            });
+
+            document.getElementById('export-pptx').onclick = exportToPPTX;
+            document.getElementById('export-pdf').onclick = saveAsPDF;
+            document.getElementById('export-wb').onclick = exportToFile;
+
+            document.getElementById('open-btn').onclick = () => document.getElementById('wb-file-input').click();
+            document.getElementById('wb-file-input').onchange = importFromFile;
 
             canvas.addEventListener('mousedown', startAction);
             window.addEventListener('mousemove', handleMove);
@@ -662,47 +707,45 @@
         }
 
         async function saveAsPDF() {
-            showToast('Preparing PDF...');
-            // Save the current page first
+            showToast('Generating PDF...');
             saveCurrentPageToMemory();
 
-            // For each page, render canvas + floating images into a single image
-            const pageImages = [];
+            const { jsPDF } = window.jspdf;
             const dpr = window.devicePixelRatio || 1;
             const W = canvas.width / dpr;
             const H = canvas.height / dpr;
 
+            // Create PDF in landscape orientation with matching aspect ratio
+            const pdf = new jsPDF({
+                orientation: 'landscape',
+                unit: 'px',
+                format: [W, H]
+            });
+
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
+                if (i > 0) pdf.addPage([W, H], 'landscape');
+
                 const offscreen = document.createElement('canvas');
                 offscreen.width = canvas.width;
                 offscreen.height = canvas.height;
                 const octx = offscreen.getContext('2d');
                 octx.scale(dpr, dpr);
 
-                // Fill background so white-on-black drawings are visible in PDF
-                octx.fillStyle = isDarkMode ? '#000000' : '#ffffff';
+                octx.fillStyle = isDarkMode ? '#171616' : '#eae3e3';
                 octx.fillRect(0, 0, W, H);
 
-                // Draw grid if visible
                 if (isGridVisible) {
                     const gx = parseInt(document.getElementById('grid-x-input').value) || 30;
                     const gy = parseInt(document.getElementById('grid-y-input').value) || 30;
                     octx.strokeStyle = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
                     octx.lineWidth = 1;
                     octx.beginPath();
-                    for (let x = 0; x <= W; x += gx) {
-                        octx.moveTo(x, 0);
-                        octx.lineTo(x, H);
-                    }
-                    for (let y = 0; y <= H; y += gy) {
-                        octx.moveTo(0, y);
-                        octx.lineTo(W, y);
-                    }
+                    for (let x = 0; x <= W; x += gx) { octx.moveTo(x, 0); octx.lineTo(x, H); }
+                    for (let y = 0; y <= H; y += gy) { octx.moveTo(0, y); octx.lineTo(W, y); }
                     octx.stroke();
                 }
 
-                // Draw canvas content
                 if (page.canvasData) {
                     await new Promise(res => {
                         const img = new Image();
@@ -711,7 +754,6 @@
                     });
                 }
 
-                // Draw floating image items
                 if (page.items) {
                     for (const item of page.items) {
                         await new Promise(res => {
@@ -730,27 +772,174 @@
                     }
                 }
 
-                pageImages.push(offscreen.toDataURL('image/png'));
+                const imgData = offscreen.toDataURL('image/png');
+                pdf.addImage(imgData, 'PNG', 0, 0, W, H);
             }
 
-            // Build a print window with one image per page
-            const printWin = window.open('', '_blank');
-            const imgsHtml = pageImages.map((src, idx) =>
-                `<div class="page"><img src="${src}" alt="Page ${idx + 1}"></div>`
-            ).join('');
+            try {
+                const blob = pdf.output('blob');
+                const suggestedName = `Whiteboard_${new Date().getTime()}.pdf`;
+                await saveBlobWithPicker(blob, suggestedName, [{
+                    description: 'PDF Document',
+                    accept: { 'application/pdf': ['.pdf'] }
+                }]);
+            } catch (err) {
+                console.error(err);
+                showToast('PDF Export Failed');
+            }
+        }
 
-            printWin.document.write(`<!DOCTYPE html>
-<html><head><title>Whiteboard PDF</title>
-<style>
-  @page { size: landscape; margin: 0; }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body, html { width: 100vw; height: 100vh; background: #fff; }
-  .page { page-break-after: always; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .page:last-child { page-break-after: auto; }
-  .page img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-</style></head><body>${imgsHtml}</body></html>`);
-            printWin.document.close();
-            printWin.onload = () => printWin.print();
+        async function exportToFile() {
+            saveCurrentPageToMemory();
+            const state = {
+                version: "1.0",
+                pages: pages,
+                currentPageIndex: currentPageIndex,
+                settings: {
+                    isDarkMode: isDarkMode,
+                    isGridVisible: isGridVisible,
+                    gridX: document.getElementById('grid-x-input').value,
+                    gridY: document.getElementById('grid-y-input').value
+                }
+            };
+            const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+            const suggestedName = `whiteboard_${new Date().getTime()}.wb`;
+            
+            await saveBlobWithPicker(blob, suggestedName, [{
+                description: 'Whiteboard File',
+                accept: { 'application/json': ['.wb'] }
+            }]);
+        }
+
+        function importFromFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const state = JSON.parse(ev.target.result);
+                    if (state.pages) {
+                        pages = state.pages;
+                        currentPageIndex = state.currentPageIndex || 0;
+                        if (state.settings) {
+                            if (isDarkMode !== state.settings.isDarkMode) toggleTheme();
+                            isGridVisible = state.settings.isGridVisible;
+                            container.classList.toggle('show-grid', isGridVisible);
+                            document.getElementById('grid-btn').classList.toggle('active', isGridVisible);
+                            document.getElementById('grid-x-input').value = state.settings.gridX;
+                            document.getElementById('grid-y-input').value = state.settings.gridY;
+                            updateGridSpacing();
+                        }
+                        loadPageFromMemory(currentPageIndex);
+                        showToast('Loaded successfully');
+                    }
+                } catch (err) {
+                    showToast('Error loading file');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function exportToPPTX() {
+            showToast('Generating PPTX...');
+            saveCurrentPageToMemory();
+            
+            const pptx = new PptxGenJS();
+            const dpr = window.devicePixelRatio || 1;
+            const W = canvas.width / dpr;
+            const H = canvas.height / dpr;
+
+            // Set layout as landscape
+            pptx.layout = 'LAYOUT_WIDE'; // 13.3 x 7.5 inches
+
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i];
+                const slide = pptx.addSlide();
+                
+                // Create flattened image for the slide background/content
+                const offscreen = document.createElement('canvas');
+                offscreen.width = canvas.width;
+                offscreen.height = canvas.height;
+                const octx = offscreen.getContext('2d');
+                octx.scale(dpr, dpr);
+                octx.fillStyle = isDarkMode ? '#171616' : '#eae3e3';
+                octx.fillRect(0, 0, W, H);
+
+                if (page.canvasData) {
+                    await new Promise(res => {
+                        const img = new Image();
+                        img.onload = () => { octx.drawImage(img, 0, 0, W, H); res(); };
+                        img.src = page.canvasData;
+                    });
+                }
+
+                if (page.items) {
+                    for (const item of page.items) {
+                        await new Promise(res => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const l = parseFloat(item.left);
+                                const t = parseFloat(item.top);
+                                const w = parseFloat(item.width);
+                                const ratio = img.naturalHeight / img.naturalWidth;
+                                octx.drawImage(img, l, t, w, w * ratio);
+                                res();
+                            };
+                            img.onerror = res;
+                            img.src = item.src;
+                        });
+                    }
+                }
+
+                const dataUrl = offscreen.toDataURL('image/png');
+                slide.addImage({ data: dataUrl, x: 0, y: 0, w: '100%', h: '100%' });
+            }
+
+            try {
+                const blob = await pptx.write('blob');
+                const suggestedName = `Whiteboard_${new Date().getTime()}.pptx`;
+                await saveBlobWithPicker(blob, suggestedName, [{
+                    description: 'PowerPoint Presentation',
+                    accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] }
+                }]);
+            } catch (err) {
+                console.error(err);
+                showToast('PPTX Export Failed');
+            }
+        }
+
+        async function saveBlobWithPicker(blob, suggestedName, types) {
+            // Check for File System Access API support
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: suggestedName,
+                        types: types
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    showToast('Saved successfully');
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error(err);
+                        showToast('Failed to save file');
+                    }
+                }
+            } else {
+                // Fallback for browsers that don't support the API
+                const name = prompt("Enter filename:", suggestedName);
+                if (name === null) return; // Cancelled
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = name.endsWith(types[0].accept[Object.keys(types[0].accept)[0]][0]) ? name : name + types[0].accept[Object.keys(types[0].accept)[0]][0];
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Download started');
+            }
         }
 
         function debounce(f, w) {
