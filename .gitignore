@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+#  The spec file is typically kept, but build/dist are not
+build/
+dist/
+*.exe
+WhiteboardApp.exe
+pyi-build/
+
+# OS-specific
+.DS_Store
+Thumbs.db

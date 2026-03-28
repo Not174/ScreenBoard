@@ -49,7 +49,23 @@ ScreenBoard is a powerful, lightweight, and professional-grade digital whiteboar
 
 ## 🚀 Getting Started
 
-Simply open `index.html` in any modern web browser. No installation or server required.
+### 🖥️ For Users (Windows)
+1. Download the latest release.
+2. Run `WhiteboardApp.exe`. No installation required!
+
+### 💻 For Developers
+1. **Option 1 (Browser only):** Simply open `index.html` in any modern web browser.
+2. **Option 2 (Python App):**
+   - Ensure you have Python installed.
+   - Install dependencies: `pip install -r requirements.txt`
+   - Run the app: `python main_app.py`
+
+## 🛠️ Building from Source
+
+To create a standalone `.exe`:
+1. Install PyInstaller: `pip install pyinstaller`
+2. Run the build command: `pyinstaller WhiteboardApp.spec`
+3. The new executable will be in the `dist/` folder.
 
 ## 🛠️ Built With
 - HTML5 Canvas API

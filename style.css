@@ -139,6 +139,90 @@
             border-right: none;
         }
 
+        /* Top Left File Sync */
+        .file-sync-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            background: var(--nav-bg);
+            backdrop-filter: blur(12px);
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            box-shadow: var(--shadow);
+            color: var(--btn-text);
+            font-size: 11px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .sync-active {
+            border-color: #2ecc71;
+            box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+        }
+
+        .toggle-label {
+            white-space: nowrap;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 34px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #475569;
+            transition: .3s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2ecc71;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(14px);
+        }
+
+        #sync-filename {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--accent-color);
+            display: none;
+        }
+
         /* Top Right Actions */
         .top-right-actions {
             position: fixed;
@@ -201,10 +285,15 @@
 
         .dropdown-menu.active {
             display: flex;
-            animation: fadeIn 0.2s ease-out;
+            animation: fadeInSimple 0.2s ease-out;
         }
 
         @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        @keyframes fadeInSimple {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
@@ -281,6 +370,7 @@
 
         .grid-settings.active {
             display: flex;
+            animation: fadeIn 0.2s ease-out;
         }
 
         .grid-setting-item {
@@ -460,12 +550,67 @@
             border: 1px solid var(--accent-color);
         }
 
-        input[type="color"] {
+        .color-dropdown {
+            position: absolute;
+            top: 55px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--toolbar-bg);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            padding: 10px;
+            display: none;
+            flex-direction: row;
+            gap: 8px;
+            z-index: 1100;
+            backdrop-filter: blur(10px);
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .color-dropdown.active {
+            display: flex;
+        }
+
+        .color-palette {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .color-swatch {
             width: 24px;
             height: 24px;
-            border: none;
-            background: none;
+            border-radius: 50%;
             cursor: pointer;
+            border: 2px solid rgba(128, 128, 128, 0.3);
+            transition: all 0.2s;
+        }
+        
+        .color-swatch:hover {
+            transform: scale(1.1);
+        }
+        
+        .color-swatch.active {
+            border-color: var(--accent-color);
+            transform: scale(1.1);
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        #color-btn {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #color-btn .color-preview {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid rgba(128, 128, 128, 0.5);
         }
 
         input[type="range"] {
