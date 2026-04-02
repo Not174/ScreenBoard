@@ -70,6 +70,9 @@ export async function stopAction() {
     if (state.currentTool === 'eraser') {
         updateEraserCursor(state.currentSize);
     }
+    // Reset composite operation to avoid affecting other drawing operations
+    if (state.ctx) state.ctx.globalCompositeOperation = 'source-over';
+
     if (state.selecting) {
         const rect = marquee.getBoundingClientRect();
         const crect = state.container.getBoundingClientRect();

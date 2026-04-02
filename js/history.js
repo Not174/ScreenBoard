@@ -44,6 +44,7 @@ export async function applyState(snapJson) {
     const img = new Image();
     await new Promise((resolve) => {
         img.onload = () => {
+            state.ctx.globalCompositeOperation = 'source-over';
             state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
             const dpr = window.devicePixelRatio || 1;
             state.ctx.drawImage(img, 0, 0, state.canvas.width / dpr, state.canvas.height / dpr);

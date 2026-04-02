@@ -39,6 +39,7 @@ export async function loadPageFromMemory(id) {
         await new Promise((resolve) => {
             img.onload = () => {
                 if (state.currentPageId === id) {
+                    state.ctx.globalCompositeOperation = 'source-over';
                     state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
                     const dpr = window.devicePixelRatio || 1;
                     // Draw at CSS dimensions - ctx is already scaled by dpr
@@ -54,6 +55,7 @@ export async function loadPageFromMemory(id) {
             img.src = s.canvasData;
         });
     } else {
+        state.ctx.globalCompositeOperation = 'source-over';
         state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
         if (state.history.length === 0) saveState();
     }
